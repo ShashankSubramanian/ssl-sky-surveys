@@ -11,8 +11,16 @@ import logging
 logging.basicConfig(format='%(levelname)s - %(message)s', level=logging.INFO)
 
 import models.resnet
+import models.vit
 from utils.YParams import YParams
 from utils.data_loader import get_data_loader
+
+from torch.optim import lr_scheduler
+from utils.scheduler import GradualWarmupScheduler
+
+def count_parameters(model):
+  params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+  return params/1000000
 
 class Trainer():
 
@@ -26,10 +34,31 @@ class Trainer():
     self.valid_data_loader, self.valid_sampler = get_data_loader(params, params.valid_data_path, dist.is_initialized(), load_specz=True, is_train=False)
     logging.info('rank %d, data loader initialized'%params.world_rank)
 
-    self.model = models.resnet.resnet50(num_channels=params.num_channels, num_classes=params.num_classes).to(self.device)
+    if params.model == 'resnet':
+      self.model = models.resnet.resnet50(num_channels=params.num_channels, num_classes=params.num_classes).to(self.device)
+      self.optimizer = torch.optim.SGD(self.model.parameters(), lr=params.lr, momentum=params.momentum, weight_decay=params.weight_decay)
+    elif params.model == 'vit':
+      self.model = models.vit.ViT(image_size=params.crop_size, num_classes=params.num_classes, channels=params.num_channels,
+        patch_size=params.patch_size,
+        dim=params.embed_dim,   
+        depth=params.depth,
+        heads=params.num_heads,
+        mlp_dim=params.mlp_dim,
+        dropout=0.1,
+        emb_dropout=0.1).to(self.device)
+      self.optimizer = torch.optim.SGD(self.model.parameters(), lr=params.lr, momentum=params.momentum, weight_decay=params.weight_decay)
+      #self.optimizer = torch.optim.Adam(self.model.parameters(), lr=params.lr, weight_decay=params.weight_decay)
+    else:
+      logging.warning("model architecture invalid")
+      
 
-    self.optimizer = torch.optim.SGD(self.model.parameters(), lr=params.lr, momentum=params.momentum, weight_decay=params.weight_decay)
-    self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=params.lr_milestones, gamma=0.1)
+    if params.model == 'vit':
+      # cosine scheuler from https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch 
+      scheduler_cosine = lr_scheduler.CosineAnnealingLR(self.optimizer, self.params.max_epochs - 1)
+      self.scheduler = GradualWarmupScheduler(self.optimizer, multiplier=1, total_epoch=1, after_scheduler=scheduler_cosine)
+    else:
+      self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=params.lr_milestones, gamma=0.1)
+
     self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
     if params.amp:
       self.grad_scaler = torch.cuda.amp.GradScaler()
@@ -184,6 +213,7 @@ if __name__ == '__main__':
   parser.add_argument("--local_rank", default=0, type=int)
   parser.add_argument("--yaml_config", default='./config/photoz.yaml', type=str)
   parser.add_argument("--config", default='default', type=str)
+  parser.add_argument("--root_dir", default='./', type=str, help='root dir to store results')
   parser.add_argument("--amp", action='store_true')
   args = parser.parse_args()
 
@@ -208,7 +238,7 @@ if __name__ == '__main__':
   torch.backends.cudnn.benchmark = True
 
   # setup output directory
-  expDir = os.path.join('./expts', args.config)
+  expDir = os.path.join(*[args.root_dir, 'expts', args.config])
   if params.world_rank==0:
     if not os.path.isdir(expDir):
       os.makedirs(expDir)
@@ -224,4 +254,6 @@ if __name__ == '__main__':
   params['log_to_tensorboard'] = params.log_to_tensorboard and params.world_rank==0
 
   trainer = Trainer(params)
+#  n_params = count_parameters(trainer.model)
+#  print("number of model parameters: ", n_params)
   trainer.train()

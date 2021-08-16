@@ -9,6 +9,7 @@ import logging
 logging.basicConfig(format='%(levelname)s - %(message)s', level=logging.INFO)
 
 import models.resnet
+import models.vit
 from utils.YParams import YParams
 from utils.data_loader import get_data_loader
 from utils.load_trained_model import load_experiment
@@ -73,9 +74,10 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument("--yaml_config", default='./config/photoz.yaml', type=str)
   parser.add_argument("--config", default='default', type=str)
+  parser.add_argument("--root_dir", default='./', type=str, help='root dir to store results')
   args = parser.parse_args()
 
-  model, params = load_experiment(os.path.abspath(args.yaml_config), args.config)
+  model, params = load_experiment(os.path.abspath(args.yaml_config), args.config, args.root_dir)
   data_loader, _  = get_data_loader(params, params.valid_data_path, distributed=False, load_specz=True, is_train=False)
 
   eval_specz(params, model, data_loader, True)

@@ -6,14 +6,15 @@ import torch
 import logging
 
 import models.resnet
+import models.vit
 from utils.YParams import YParams
 from utils.data_loader import get_data_loader
 
-def load_experiment(yaml_config_file='./config/photoz.yaml', config='default', load_best_ckpt=True, device=torch.cuda.current_device()):
+def load_experiment(yaml_config_file='./config/photoz.yaml', config='default', root_dir="./", load_best_ckpt=True, device=torch.cuda.current_device()):
   params = YParams(yaml_config_file, config)
 
   # setup output directory
-  expDir = os.path.join('./expts', config)
+  expDir = os.path.join(*[root_dir, 'expts', config])
   if not os.path.isdir(expDir):
     logging.error("%s not found"%expDir)
     exit(1)
@@ -36,12 +37,23 @@ def load_experiment(yaml_config_file='./config/photoz.yaml', config='default', l
   if load_best_ckpt:
     checkpoint_path = checkpoint_path.replace('.tar', '_best.tar')
 
-  model = load_model_from_checkpoint(checkpoint_path, params.num_channels, num_classes=params.num_classes, device=device)
+  model = load_model_from_checkpoint(checkpoint_path, params, crop_size=params.crop_size, num_channels=params.num_channels, num_classes=params.num_classes, device=device)
 
   return model, params
 
-def load_model_from_checkpoint(checkpoint_path, num_channels=5, num_classes=180, device=torch.cuda.current_device()):
-  model = models.resnet.resnet50(num_channels=num_channels, num_classes=num_classes).to(device)
+def load_model_from_checkpoint(checkpoint_path, params, crop_size=64, num_channels=5, num_classes=180, device=torch.cuda.current_device()):
+  model = params.model
+  if model == 'resnet':
+    model = models.resnet.resnet50(num_channels=num_channels, num_classes=num_classes).to(device)
+  elif model == 'vit':
+    model = models.vit.ViT(image_size=crop_size, num_classes=num_classes, channels=num_channels,
+        patch_size=params.patch_size,
+        dim=params.embed_dim,   
+        depth=params.depth,
+        heads=params.num_heads,
+        mlp_dim=params.mlp_dim,
+        dropout=0.1,
+        emb_dropout=0.1).to(device)
 
   logging.info("Loading checkpoint %s"%checkpoint_path)
   restore_checkpoint(model, checkpoint_path)

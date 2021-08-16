@@ -3,10 +3,10 @@ import time
 import numpy as np
 import torch
 from YParams import YParams
-from data_loader import get_data_loader
+from data_loader_rgb import get_data_loader
 
 params = YParams(os.path.abspath('config/photoz.yaml'), 'default')
-params.train_data_path = "/global/cscratch1/sd/mustafa/SDSS/data_20200901/train.h5"
+params.train_data_path = "/global/cscratch1/sd/shas1693/data/sdss/sdss_w_specz_train.h5"
 params.num_data_workers = 1
 params.batch_size = 4
 params.valid_batch_size_per_gpu = 4
