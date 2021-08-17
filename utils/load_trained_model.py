@@ -54,6 +54,11 @@ def load_model_from_checkpoint(checkpoint_path, params, crop_size=64, num_channe
         mlp_dim=params.mlp_dim,
         dropout=0.1,
         emb_dropout=0.1).to(device)
+  elif model == 'vit_dino':
+    model = models.vit_dino.vit_small(img_size=[crop_size], in_chans=num_channels, num_classes=num_classes,
+                  patch_size=params.patch_size,
+                  drop_rate=0.1,
+                  attn_drop_rate=0.1).to(device)
 
   logging.info("Loading checkpoint %s"%checkpoint_path)
   restore_checkpoint(model, checkpoint_path)
