@@ -7,6 +7,7 @@ import logging
 
 import models.resnet
 import models.vit
+import models.vit_dino
 from utils.YParams import YParams
 from utils.data_loader import get_data_loader
 

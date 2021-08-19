@@ -1,4 +1,5 @@
 """
+modified from
 https://github.com/facebookresearch/dino/blob/main/vision_transformer.py
 """
 import math
@@ -158,7 +159,7 @@ class VisionTransformer(nn.Module):
     """ Vision Transformer """
     def __init__(self, img_size=[224], patch_size=16, in_chans=3, num_classes=0, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, **kwargs):
+                 drop_path_rate=0., norm_layer=nn.LayerNorm, pretrained=False, **kwargs):
         super().__init__()
         self.num_features = self.embed_dim = embed_dim
 
@@ -179,7 +180,12 @@ class VisionTransformer(nn.Module):
         self.norm = norm_layer(embed_dim)
 
         # Classifier head
-        self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+        self.pretrained = pretrained
+        if pretrained:
+            # no head; model is used as a pretrained backbone
+            self.head = nn.Identity()
+        else:
+            self.head = nn.Linear(embed_dim, num_classes)
 
         trunc_normal_(self.pos_embed, std=.02)
         trunc_normal_(self.cls_token, std=.02)
@@ -229,14 +235,6 @@ class VisionTransformer(nn.Module):
 
         return self.pos_drop(x)
 
-    def forward(self, x):
-        x = self.prepare_tokens(x)
-        for blk in self.blocks:
-            x = blk(x)
-        x = self.norm(x)
-        x = self.head(x[:, 0])
-        return x
-
     def get_last_selfattention(self, x):
         x = self.prepare_tokens(x)
         for i, blk in enumerate(self.blocks):
@@ -255,6 +253,58 @@ class VisionTransformer(nn.Module):
             if len(self.blocks) - i <= n:
                 output.append(self.norm(x))
         return output
+    
+    def forward(self, x):
+        x = self.prepare_tokens(x)
+        for blk in self.blocks:
+            x = blk(x)
+        x = self.norm(x)
+        if self.pretrained:
+            # pretrained model is used, just return the cls
+            return x[:,0]
+        else:
+            # training from scratch, so pass cls through head
+            x = self.head(x[:,0])
+            return x
+
+class LinearHead(nn.Module):
+    """ A linear classification head """
+    def __init__(self, in_dim, out_dim):
+        super(LinearHead, self).__init__()
+#        self.mlp_head = nn.Sequential(
+#            nn.LayerNorm(dim),
+#            nn.Linear(in_dim, out_dim)
+#        )
+        self.mlp_head = nn.Linear(in_dim, out_dim)
+
+    def forward(self, x):
+        return self.mlp_head(x)
+
+class DNNWrapper(nn.Module):
+    """ this module wraps a backbone and head """
+    def __init__(self, backbone, head):
+        super(DNNWrapper, self).__init__()
+        self.backbone = backbone
+        self.head = head
+
+    def forward(self, x):
+        x = self.backbone(x)
+        x = self.head(x)
+        return x
+
+def vit_small_pretrained(patch_size=16, num_classes=1, pretrained_model_path="./", **kwargs):
+    backbone = VisionTransformer(
+        patch_size=patch_size, embed_dim=384, depth=12, num_heads=6, mlp_ratio=4,
+        qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), pretrained=True,  **kwargs)
+    head = LinearHead(in_dim=backbone.embed_dim, out_dim=num_classes)
+    # init the head weights 
+    head.mlp_head.weight.data.normal_(mean=0.0, std=0.01)
+    head.mlp_head.bias.data.zero_() 
+    # init the backbone weights through a pretrained model
+    backbone.load_state_dict(torch.load(pretrained_model_path, map_location="cuda:0"))
+    # wrap the backdone and head
+    model = DNNWrapper(backbone, head)
+    return model
 
 
 def vit_tiny(patch_size=16, **kwargs):
@@ -262,7 +312,6 @@ def vit_tiny(patch_size=16, **kwargs):
         patch_size=patch_size, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4,
         qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     return model
-
 
 def vit_small(patch_size=16, **kwargs):
     model = VisionTransformer(
