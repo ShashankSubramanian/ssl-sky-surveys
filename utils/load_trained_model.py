@@ -9,7 +9,6 @@ import models.resnet
 import models.vit
 import models.vit_dino
 from utils.YParams import YParams
-from utils.data_loader import get_data_loader
 
 def load_experiment(yaml_config_file='./config/photoz.yaml', config='default', root_dir="./", load_best_ckpt=True, device=torch.cuda.current_device()):
   params = YParams(yaml_config_file, config)
@@ -56,8 +55,22 @@ def load_model_from_checkpoint(checkpoint_path, params, crop_size=64, num_channe
         dropout=0.1,
         emb_dropout=0.1).to(device)
   elif model == 'vit_dino':
-    model = models.vit_dino.vit_small(img_size=[crop_size], in_chans=num_channels, num_classes=num_classes,
+    if params.resize:
+      model = models.vit_dino.vit_small(img_size=[224], in_chans=num_channels, num_classes=num_classes,
+                    patch_size=params.patch_size,
+                    drop_path_rate=params.stoch_drop_rate,
+                    drop_rate=0.1,
+                    attn_drop_rate=0.1).to(device)
+    else:
+      model = models.vit_dino.vit_small(img_size=[crop_size], in_chans=num_channels, num_classes=num_classes,
+                    patch_size=params.patch_size,
+                    drop_path_rate=params.stoch_drop_rate,
+                    drop_rate=0.1,
+                    attn_drop_rate=0.1).to(device)
+  elif model == 'vit_dino_lucidrains':
+    model = models.vit_dino.vit_lucidrains(img_size=[crop_size], in_chans=params.num_channels, num_classes=params.num_classes,
                   patch_size=params.patch_size,
+                  drop_path_rate=params.stoch_drop_rate,
                   drop_rate=0.1,
                   attn_drop_rate=0.1).to(device)
 

@@ -51,6 +51,7 @@ class JitterCrop:
 
 def get_data_loader(params, files_pattern, distributed, is_train, load_specz):
   if params.resize: # resize the images to imagenet
+    print("resized dataloader!")
     if is_train:
       transform = transforms.Compose([SDSSDR12Reddening(deredden=True),
                                       ToRGB(),

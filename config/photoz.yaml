@@ -40,31 +40,27 @@ default: &DEFAULT
   mlp_dim: 512
   num_heads: 8
 
+  stoch_drop_rate: 0
+
 baseline:
   <<: *DEFAULT
+
+baseline-rgb:
+  <<: *DEFAULT
+  num_channels: 3
 
 finetuned:
   <<: *DEFAULT
 
-vit:
-  <<: *DEFAULT
-  model: 'vit'
-
 vit-dino-pretrained-p16-lr1e-2:
   <<: *DEFAULT
   model: 'vit_dino'
+  resize: !!bool True
   patch_size: 16
   lr: !!float 0.01
   num_channels: 3
   pretrained_model_path: '/global/homes/s/shas1693/codes/ssl-sky-surveys/pretrained_models/dino_deitsmall16_pretrain.pth'
 
-sanity-check:
-  <<: *DEFAULT
-  model: 'vit_dino'
-  patch_size: 4
-  lr: !!float 0.01
-  train_data_path: '/global/cscratch1/sd/shas1693/data/sdss/sdss_w_specz_train.h5'
-  valid_data_path: '/global/cscratch1/sd/shas1693/data/sdss/sdss_w_specz_valid.h5'
 
 vit-dino-lr1e-1:
   <<: *DEFAULT
@@ -75,6 +71,7 @@ vit-dino-lr1e-1:
 vit-dino-rgb-p16-lr1e-3:
   <<: *DEFAULT
   model: 'vit_dino'
+  resize: !!bool True
   patch_size: 16
   num_channels: 3
   lr: !!float 0.001
@@ -82,15 +79,35 @@ vit-dino-rgb-p16-lr1e-3:
 vit-dino-rgb-p16-lr1e-1:
   <<: *DEFAULT
   model: 'vit_dino'
+  resize: !!bool True
   patch_size: 16
   num_channels: 3
+  stoch_drop_rate: 0.1
   lr: !!float 0.1
+
+vit-dino-rgb-p8-lr1e-2:
+  <<: *DEFAULT
+  model: 'vit_dino'
+  resize: !!bool True
+  patch_size: 8
+  num_channels: 3
+  stoch_drop_rate: 0.1
+  lr: !!float 0.01
 
 vit-dino-rgb-p16-lr1e-2:
   <<: *DEFAULT
   model: 'vit_dino'
+  resize: !!bool True
   patch_size: 16
   num_channels: 3
+  stoch_drop_rate: 0.1
+  lr: !!float 0.01
+
+vit-dino-stochdepth-lr1e-2:
+  <<: *DEFAULT
+  model: 'vit_dino'
+  patch_size: 4
+  stoch_drop_rate: 0.1
   lr: !!float 0.01
 
 vit-dino-lr1e-2:
@@ -104,6 +121,19 @@ vit-dino-lr1e-3:
   model: 'vit_dino'
   patch_size: 4
   lr: !!float 0.001
+
+vit-dino-lucidrains-lr1e-1:
+  <<: *DEFAULT
+  lr: !!float 0.1
+  patch_size: 4
+  stoch_drop_rate: 0.1
+  model: 'vit_dino_lucidrains'
+
+vit-dino-lucidrains-lr1e-2:
+  <<: *DEFAULT
+  lr: !!float 0.01
+  patch_size: 4
+  model: 'vit_dino_lucidrains'
 
 vit-small: &VITSMALL
   <<: *DEFAULT
@@ -136,12 +166,6 @@ vit-lr1e-1:
 vit-lr5e-2:
   <<: *DEFAULT
   lr: !!float 0.05
-  model: 'vit'
-
-vit-lr-schedule:
-  <<: *DEFAULT
-  lr: !!float 0.001
-  weight_decay: 0.
   model: 'vit'
 
 test:

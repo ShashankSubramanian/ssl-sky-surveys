@@ -14,7 +14,7 @@ import models.resnet
 import models.vit_dino
 import models.vit
 from utils.YParams import YParams
-from utils.data_loader import get_data_loader
+from utils.data_loader_rgb import get_data_loader
 
 from torch.optim import lr_scheduler
 from utils.scheduler import GradualWarmupScheduler
@@ -50,16 +50,21 @@ class Trainer():
       self.optimizer = torch.optim.SGD(self.model.parameters(), lr=params.lr, momentum=params.momentum, weight_decay=params.weight_decay)
       #self.optimizer = torch.optim.Adam(self.model.parameters(), lr=params.lr, weight_decay=params.weight_decay)
     elif params.model == 'vit_dino':
-      self.model = models.vit_dino.vit_small(img_size=[params.crop_size], in_chans=params.num_channels, num_classes=params.num_classes,
-                   patch_size=params.patch_size,
-                   drop_path_rate=params.stoch_drop_rate,
-                   drop_rate=0.1,
-                   attn_drop_rate=0.1).to(self.device)
+      if params.resize:
+        self.model = models.vit_dino.vit_small(img_size=[224], in_chans=params.num_channels, num_classes=params.num_classes,
+                    patch_size=params.patch_size,
+                    drop_path_rate=params.stoch_drop_rate,
+                    drop_rate=0.1,
+                    attn_drop_rate=0.1).to(self.device)
+      else:
+        self.model = models.vit_dino.vit_small(img_size=[params.crop_size], in_chans=params.num_channels, num_classes=params.num_classes,
+                    patch_size=params.patch_size,
+                    drop_path_rate=params.stoch_drop_rate,
+                    drop_rate=0.1,
+                    attn_drop_rate=0.1).to(self.device)
       self.optimizer = torch.optim.SGD(self.model.parameters(), lr=params.lr, momentum=params.momentum, weight_decay=params.weight_decay)
-#### the lucidrains model
-##
     elif params.model == 'vit_dino_lucidrains':
-      self.model = models.vit_dino.vit_lucidrains(img_size=[params.crop_size], in_chans=params.num_channels, num_classes=params.num_classes,
+      self.model = models.vit_dino.vit_lucidrains(img_size=[224], in_chans=params.num_channels, num_classes=params.num_classes,
                    patch_size=params.patch_size,
                    drop_path_rate=params.stoch_drop_rate,
                    drop_rate=0.1,
