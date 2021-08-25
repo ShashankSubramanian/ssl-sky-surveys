@@ -19,6 +19,14 @@ from utils.data_loader import get_data_loader
 from torch.optim import lr_scheduler
 from utils.scheduler import GradualWarmupScheduler
 
+def set_seed(params):
+  seed = params.seed
+  random.seed(seed)
+  np.random.seed(seed)
+  torch.manual_seed(seed)
+  if params['world_size'] > 0:
+      torch.cuda.manual_seed_all(seed)
+
 def count_parameters(model):
   params = sum(p.numel() for p in model.parameters() if p.requires_grad)
   return params/1000000
@@ -272,5 +280,5 @@ if __name__ == '__main__':
 
   trainer = Trainer(params)
   n_params = count_parameters(trainer.model)
-  print("number of model parameters: ", n_params)
+  logging.info('number of model parameters: {}'.format(n_params))
   trainer.train()

@@ -45,6 +45,17 @@ default: &DEFAULT
 baseline:
   <<: *DEFAULT
 
+baseline-sigma:
+  <<: *DEFAULT
+
+baseline-test:
+  <<: *DEFAULT
+
+baseline-rgb-sigma-seed0:
+  <<: *DEFAULT
+  num_channels: 3
+  seed: 0
+
 baseline-rgb:
   <<: *DEFAULT
   num_channels: 3
@@ -59,6 +70,17 @@ vit-dino-pretrained-p16-lr1e-2:
   patch_size: 16
   lr: !!float 0.01
   num_channels: 3
+  pretrained_model_path: '/global/homes/s/shas1693/codes/ssl-sky-surveys/pretrained_models/dino_deitsmall16_pretrain.pth'
+
+vit-dino-pretrained-p16-lr1e-2-sigma-seed0:
+  <<: *DEFAULT
+  model: 'vit_dino'
+  resize: !!bool True
+  patch_size: 16
+  lr: !!float 0.01
+  num_channels: 3
+  seed: 0
+  stoch_drop_rate: !!float 0.1
   pretrained_model_path: '/global/homes/s/shas1693/codes/ssl-sky-surveys/pretrained_models/dino_deitsmall16_pretrain.pth'
 
 
@@ -85,6 +107,16 @@ vit-dino-rgb-p16-lr1e-1:
   stoch_drop_rate: 0.1
   lr: !!float 0.1
 
+vit-dino-rgb-p16-lr1e-2-sigma-seed0:
+  <<: *DEFAULT
+  model: 'vit_dino'
+  resize: !!bool True
+  patch_size: 16
+  num_channels: 3
+  seed: 0
+  stoch_drop_rate: !!float 0.1
+  lr: !!float 0.01
+
 vit-dino-rgb-p8-lr1e-2:
   <<: *DEFAULT
   model: 'vit_dino'
@@ -110,6 +142,38 @@ vit-dino-stochdepth-lr1e-2:
   stoch_drop_rate: 0.1
   lr: !!float 0.01
 
+vit-dino-lucidrains-lr1e-1-sigma-seed0-sdr0:
+  <<: *DEFAULT
+  model: 'vit_dino_lucidrains'
+  patch_size: 4
+  lr: !!float 0.1
+  seed: 0
+  stoch_drop_rate: !!float 0.0
+
+vit-dino-lucidrains-lr1e-1-sigma-seed0:
+  <<: *DEFAULT
+  model: 'vit_dino_lucidrains'
+  patch_size: 4
+  lr: !!float 0.1
+  seed: 0
+  stoch_drop_rate: !!float 0.1
+
+vit-dino-lr1e-2-sigma-seed0:
+  <<: *DEFAULT
+  model: 'vit_dino'
+  patch_size: 4
+  lr: !!float 0.01
+  seed: 0
+  stoch_drop_rate: !!float 0.1
+
+vit-dino-lr1e-2-sigma-seed42:
+  <<: *DEFAULT
+  model: 'vit_dino'
+  patch_size: 4
+  lr: !!float 0.01
+  seed: 42
+  stoch_drop_rate: !!float 0.1
+  
 vit-dino-lr1e-2:
   <<: *DEFAULT
   model: 'vit_dino'
@@ -158,6 +222,23 @@ vit-lr1e-2:
   lr: !!float 0.01
   model: 'vit'
 
+vit-lr1e-1-sigma-seed0:
+  <<: *DEFAULT
+  lr: !!float 0.1
+  model: 'vit'
+  seed: 0
+
+vit-lr1e-1-sigma-seed42:
+  <<: *DEFAULT
+  lr: !!float 0.1
+  model: 'vit'
+  seed: 42
+
+vit-lr1e-1-sigma:
+  <<: *DEFAULT
+  lr: !!float 0.1
+  model: 'vit'
+
 vit-lr1e-1:
   <<: *DEFAULT
   lr: !!float 0.1
@@ -167,6 +248,13 @@ vit-lr5e-2:
   <<: *DEFAULT
   lr: !!float 0.05
   model: 'vit'
+
+vit-test:
+  <<: *DEFAULT
+  lr: !!float 0.1
+  model: 'vit'
+  train_data_path: '/global/cscratch1/sd/shas1693/data/sdss/sdss_w_specz_train.h5'
+  valid_data_path: '/global/cscratch1/sd/shas1693/data/sdss/sdss_w_specz_valid.h5'
 
 test:
   <<: *VITSMALL

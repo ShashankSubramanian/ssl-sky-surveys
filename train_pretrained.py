@@ -1,6 +1,8 @@
 import os
+import numpy as np
 import time
 import argparse
+import random
 
 import torch
 import torch.distributed as dist
@@ -18,6 +20,15 @@ from utils.data_loader_rgb import get_data_loader
 
 from torch.optim import lr_scheduler
 from utils.scheduler import GradualWarmupScheduler
+from astropy.stats import mad_std
+
+def set_seed(params):
+  seed = params.seed
+  random.seed(seed)
+  np.random.seed(seed)
+  torch.manual_seed(seed)
+  if params['world_size'] > 0:
+      torch.cuda.manual_seed_all(seed)
 
 def count_parameters(model):
   params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -59,6 +70,7 @@ class Trainer():
         self.model = models.vit_dino.vit_small_pretrained(img_size=[224], in_chans=params.num_channels,
                     num_classes=params.num_classes,
                     patch_size=params.patch_size,
+                    drop_path_rate=params.stoch_drop_rate,
                     drop_rate=0.1,
                     attn_drop_rate=0.1,
                     pretrained_model_path=pretrained_model_path,
@@ -142,6 +154,8 @@ class Trainer():
         self.writer.add_scalar('loss/valid', valid_logs['loss'], self.epoch) 
         self.writer.add_scalar('acc1/train', train_logs['acc1'], self.epoch) 
         self.writer.add_scalar('acc1/valid', valid_logs['acc1'], self.epoch) 
+        self.writer.add_scalar('sigma/train', train_logs['sigma'], self.epoch) 
+        self.writer.add_scalar('sigma/valid', valid_logs['sigma'], self.epoch) 
         self.writer.add_scalar('learning_rate', self.optimizer.param_groups[0]['lr'], self.epoch)
 
       if self.params.log_to_screen:
@@ -151,15 +165,35 @@ class Trainer():
                                                                                                                   train_logs['acc1'],
                                                                                                                   valid_logs['acc1']))
 
+  def get_delzs(self, pdfs, speczs):
+    bin_width = self.params.specz_upper_lim/self.params.num_classes
+    span = (bin_width/2) + bin_width*torch.arange(0, self.params.num_classes)
+    span = span.to(self.device)
+    photozs = torch.sum((pdfs*span), axis = 1)
+    delzs = (photozs-speczs)/(1+speczs)
+    return delzs
+
+  def compute_sigma_mad(self, delzs):
+    madstd = mad_std(delzs)
+    return np.float32(madstd)
+
   def train_one_epoch(self):
     self.epoch += 1
     tr_time = 0
     data_time = 0
     self.model.train()
+    softmax = torch.nn.Softmax(dim = 1)
+    batch_size = self.params.batch_size # batch size per gpu
+    n_samples = batch_size * len(self.train_data_loader)
+    # pdfs/speczs for the samples on localgpu
+    pdfs = torch.zeros(n_samples, self.params.num_classes).float().to(self.device)
+    speczs = torch.zeros(n_samples).float().to(self.device)
+
     for i, data in enumerate(self.train_data_loader, 0):
       self.iters += 1
       data_start = time.time()
       images, specz_bin = map(lambda x: x.to(self.device), data[:2])
+      specz = data[2].to(self.device)
       data_time += time.time() - data_start
 
       tr_start = time.time()
@@ -167,6 +201,9 @@ class Trainer():
       with torch.cuda.amp.autocast(self.params.amp):
         outputs = self.model(images)
         loss = self.criterion(outputs, specz_bin)
+      
+      pdfs[i*batch_size:(i+1)*batch_size,:] = softmax(outputs).detach()
+      speczs[i*batch_size:(i+1)*batch_size] = specz
 
       if self.params.amp:
         self.grad_scaler.scale(loss).backward()
@@ -176,12 +213,20 @@ class Trainer():
         loss.backward()
         self.optimizer.step()
       tr_time += time.time() - tr_start
+    
+    delzs = self.get_delzs(pdfs, speczs) # a n_samples tensor on each gpu
+    delzs_global = [torch.zeros(n_samples).float().to(self.device) for _ in range(params['world_size'])]
+    dist.all_gather(delzs_global, delzs)
+    delzs_global = torch.cat([dz for dz in delzs_global]).cpu().numpy()
+
+    madstd = torch.from_numpy(np.array([self.compute_sigma_mad(delzs_global)])).to(self.device)
 
     # save metrics of last batch
     _, preds = outputs.max(1)
     acc1 = preds.eq(specz_bin).sum().float()/specz_bin.shape[0]
     logs = {'loss': loss,
-            'acc1': acc1}
+            'acc1': acc1,
+            'sigma': madstd}
 
     if dist.is_initialized():
       for key in sorted(logs.keys()):
@@ -196,16 +241,37 @@ class Trainer():
     valid_start = time.time()
     loss = 0.0
     correct = 0.0
+    
+    softmax = torch.nn.Softmax(dim = 1)
+    batch_size = self.params.valid_batch_size_per_gpu
+    n_samples = batch_size * len(self.valid_data_loader)
+    # pdfs/speczs for the samples on localgpu
+    pdfs = torch.zeros(n_samples, self.params.num_classes).float().to(self.device)
+    speczs = torch.zeros(n_samples).float().to(self.device)
+
     with torch.no_grad():
-      for data in self.valid_data_loader:
+      for idx, data in enumerate(self.valid_data_loader):
         images, specz_bin = map(lambda x: x.to(self.device), data[:2])
+        specz = data[2].to(self.device)
         outputs = self.model(images)
+        
+        pdfs[idx*batch_size:(idx+1)*batch_size,:] = softmax(outputs).detach()
+        speczs[idx*batch_size:(idx+1)*batch_size] = specz
+
         loss += self.criterion(outputs, specz_bin)
         _, preds = outputs.max(1)
         correct += preds.eq(specz_bin).sum().float()/specz_bin.shape[0]
 
+    delzs = self.get_delzs(pdfs, speczs) # a n_samples tensor on each gpu
+    delzs_global = [torch.zeros(n_samples).float().to(self.device) for _ in range(params['world_size'])]
+    dist.all_gather(delzs_global, delzs)
+    delzs_global = torch.cat([dz for dz in delzs_global]).cpu().numpy()
+
+    madstd = torch.from_numpy(np.array([self.compute_sigma_mad(delzs_global)])).to(self.device)
+
     logs = {'loss': loss/len(self.valid_data_loader),
-            'acc1': correct/len(self.valid_data_loader)}
+            'acc1': correct/len(self.valid_data_loader),
+            'sigma': madstd}
     valid_time = time.time() - valid_start
 
     if dist.is_initialized():
@@ -284,6 +350,7 @@ if __name__ == '__main__':
   params['log_to_screen'] = params.log_to_screen and params.world_rank==0
   params['log_to_tensorboard'] = params.log_to_tensorboard and params.world_rank==0
 
+  set_seed(params)
   trainer = Trainer(params)
   n_params = count_parameters(trainer.model)
   logging.info('number of model parameters: {}'.format(n_params))

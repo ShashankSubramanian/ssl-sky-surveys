@@ -9,6 +9,8 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.tensorboard import SummaryWriter
 
+from astropy.stats import mad_std
+
 import logging
 logging.basicConfig(format='%(levelname)s - %(message)s', level=logging.INFO)
 
@@ -16,12 +18,10 @@ import models.resnet
 import models.vit_dino
 import models.vit
 from utils.YParams import YParams
-from utils.data_loader_rgb import get_data_loader
+from utils.data_loader import get_data_loader
 
 from torch.optim import lr_scheduler
 from utils.scheduler import GradualWarmupScheduler
-
-from astropy.stats import mad_std
 
 def set_seed(params):
   seed = params.seed
@@ -62,21 +62,16 @@ class Trainer():
       self.optimizer = torch.optim.SGD(self.model.parameters(), lr=params.lr, momentum=params.momentum, weight_decay=params.weight_decay)
       #self.optimizer = torch.optim.Adam(self.model.parameters(), lr=params.lr, weight_decay=params.weight_decay)
     elif params.model == 'vit_dino':
-      if params.resize:
-        self.model = models.vit_dino.vit_small(img_size=[224], in_chans=params.num_channels, num_classes=params.num_classes,
-                    patch_size=params.patch_size,
-                    drop_path_rate=params.stoch_drop_rate,
-                    drop_rate=0.1,
-                    attn_drop_rate=0.1).to(self.device)
-      else:
-        self.model = models.vit_dino.vit_small(img_size=[params.crop_size], in_chans=params.num_channels, num_classes=params.num_classes,
-                    patch_size=params.patch_size,
-                    drop_path_rate=params.stoch_drop_rate,
-                    drop_rate=0.1,
-                    attn_drop_rate=0.1).to(self.device)
+      self.model = models.vit_dino.vit_small(img_size=[params.crop_size], in_chans=params.num_channels, num_classes=params.num_classes,
+                   patch_size=params.patch_size,
+                   drop_path_rate=params.stoch_drop_rate,
+                   drop_rate=0.1,
+                   attn_drop_rate=0.1).to(self.device)
       self.optimizer = torch.optim.SGD(self.model.parameters(), lr=params.lr, momentum=params.momentum, weight_decay=params.weight_decay)
+#### the lucidrains model
+##
     elif params.model == 'vit_dino_lucidrains':
-      self.model = models.vit_dino.vit_lucidrains(img_size=[224], in_chans=params.num_channels, num_classes=params.num_classes,
+      self.model = models.vit_dino.vit_lucidrains(img_size=[params.crop_size], in_chans=params.num_channels, num_classes=params.num_classes,
                    patch_size=params.patch_size,
                    drop_path_rate=params.stoch_drop_rate,
                    drop_rate=0.1,
@@ -155,6 +150,7 @@ class Trainer():
                                                                                                                   valid_time,
                                                                                                                   train_logs['acc1'],
                                                                                                                   valid_logs['acc1']))
+
   def get_delzs(self, pdfs, speczs):
     bin_width = self.params.specz_upper_lim/self.params.num_classes
     span = (bin_width/2) + bin_width*torch.arange(0, self.params.num_classes)
@@ -191,7 +187,7 @@ class Trainer():
       with torch.cuda.amp.autocast(self.params.amp):
         outputs = self.model(images)
         loss = self.criterion(outputs, specz_bin)
-      
+
       pdfs[i*batch_size:(i+1)*batch_size,:] = softmax(outputs).detach()
       speczs[i*batch_size:(i+1)*batch_size] = specz
 
@@ -203,7 +199,7 @@ class Trainer():
         loss.backward()
         self.optimizer.step()
       tr_time += time.time() - tr_start
-    
+
     delzs = self.get_delzs(pdfs, speczs) # a n_samples tensor on each gpu
     delzs_global = [torch.zeros(n_samples).float().to(self.device) for _ in range(params['world_size'])]
     dist.all_gather(delzs_global, delzs)
